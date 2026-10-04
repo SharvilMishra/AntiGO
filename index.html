@@ -28,7 +28,7 @@
     <div class="mark" aria-hidden="true">A</div>
     <h1>AntiGO for Android</h1>
     <p>Install the Android app directly on your device.</p>
-    <a class="download" id="download" href="downloads/antigo.apk" download aria-disabled="true">Checking availability…</a>
+    <a class="download" id="download" href="#" aria-disabled="true">Checking availability…</a>
     <p class="status" id="status" role="status" aria-live="polite"></p>
     <details>
       <summary>How to install</summary>
@@ -43,14 +43,22 @@
   <script>
     const link = document.getElementById("download");
     const status = document.getElementById("status");
-    fetch(link.href, { method: "HEAD", cache: "no-store" }).then(response => {
-      if (!response.ok) throw new Error("not available");
+    fetch("https://api.github.com/repos/SharvilMishra/AntiGO/releases/latest", {
+      headers: { Accept: "application/vnd.github+json" },
+      cache: "no-store"
+    }).then(response => {
+      if (!response.ok) throw new Error("no release");
+      return response.json();
+    }).then(release => {
+      const apk = release.assets.find(asset => asset.name === "antigo.apk");
+      if (!apk) throw new Error("APK not attached");
+      link.href = apk.browser_download_url;
       link.setAttribute("aria-disabled", "false");
       link.textContent = "Download APK";
-      status.textContent = "The latest release is ready to download.";
+      status.textContent = `Latest release: ${release.tag_name}`;
     }).catch(() => {
       link.textContent = "Release not available yet";
-      status.textContent = "The signed APK will appear here when a release is published.";
+      status.textContent = "The signed APK will appear here after the first release is published.";
     });
   </script>
 </body>

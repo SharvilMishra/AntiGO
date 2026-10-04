@@ -28,7 +28,8 @@ android {
   }
   signingConfigs {
     create("release") {
-      credential("KEYSTORE_PATH", "KEYSTORE_PATH")?.let { storeFile = file(it) }
+      credential("KEYSTORE_PATH", "KEYSTORE_PATH")?.let { storeFile = rootProject.file(it) }
+      storeType = "pkcs12"
       storePassword = credential("STORE_PASSWORD", "STORE_PASSWORD")
       keyAlias = credential("KEY_ALIAS", "KEY_ALIAS")
       keyPassword = credential("KEY_PASSWORD", "KEY_PASSWORD")

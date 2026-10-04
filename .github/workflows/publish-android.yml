@@ -1,0 +1,79 @@
+name: Build and publish Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New release tag (for example v1.0.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-android-apk
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform and build tools
+        run: sdkmanager "platforms;android-36.1" "build-tools;36.0.0"
+
+      - name: Prepare Firebase config and signing key
+        env:
+          FIREBASE_CONFIG_BASE64: ${{ secrets.FIREBASE_CONFIG_BASE64 }}
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_CONFIG_BASE64" || { echo "FIREBASE_CONFIG_BASE64 secret is required"; exit 1; }
+          test -n "$RELEASE_KEYSTORE_BASE64" || { echo "RELEASE_KEYSTORE_BASE64 secret is required"; exit 1; }
+          mkdir -p release-signing
+          printf '%s' "$FIREBASE_CONFIG_BASE64" | base64 --decode > app/google-services.json
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > release-signing/antigo-release.p12
+
+      - name: Build and copy signed release APK
+        env:
+          KEYSTORE_PATH: release-signing/antigo-release.p12
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$STORE_PASSWORD" || { echo "STORE_PASSWORD secret is required"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "KEY_ALIAS secret is required"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "KEY_PASSWORD secret is required"; exit 1; }
+          gradle --no-daemon publishReleaseApkToWebsite
+
+      - name: Publish APK as a GitHub release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          test -s downloads/antigo.apk
+          gh release create "$RELEASE_TAG" downloads/antigo.apk \
+            --title "AntiGO $RELEASE_TAG" \
+            --notes "Signed Android APK for direct installation."

@@ -16,6 +16,9 @@
 local.properties
 app/google-services.json
 AndroidFoundation.zip
+release-signing/
+*.p12
+*.pfx
 .env
 *.jks
 *.keystore
