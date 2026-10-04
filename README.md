@@ -14,7 +14,7 @@ The API base URL is configured as an HTTPS-only Gradle build value and must be r
 
 ## Android website distribution
 
-The static download page is in `website/`. Build a release with the release signing values configured in the environment or ignored `local.properties`, then run the `publishReleaseApkToWebsite` Gradle task. It copies the signed APK to `website/downloads/antigo.apk`, which the page links to. Deploy the contents of `website/` to an HTTPS static host to make the download available to Android devices.
+The download page is `index.html` in the repository root, which is also the GitHub Pages source currently selected for this repository. Build a release with the signing values configured in the environment or ignored `local.properties`, then run the `publishReleaseApkToWebsite` Gradle task. It copies the signed APK to `downloads/antigo.apk`, which the page links to. Commit and push both files to publish the download on the site.
 
 Keep the signing key and passwords private and backed up. Future APK updates must use the same signing key so Android can install them as updates.
 

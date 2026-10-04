@@ -88,5 +88,5 @@ tasks.register<Copy>("publishReleaseApkToWebsite") {
     include("app-release.apk")
     rename { "antigo.apk" }
   }
-  into(rootProject.layout.projectDirectory.dir("website/downloads"))
+  into(rootProject.layout.projectDirectory.dir("downloads"))
 }
