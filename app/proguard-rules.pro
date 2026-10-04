@@ -1,0 +1,4 @@
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class kotlin.Metadata { *; }
+-keep @com.squareup.moshi.JsonClass class * { *; }
