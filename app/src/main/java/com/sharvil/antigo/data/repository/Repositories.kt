@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -18,6 +19,19 @@ import kotlin.coroutines.resumeWithException
 interface ChatRepository { fun conversations(): Flow<List<Conversation>>; fun messages(conversationId: String): Flow<List<ChatMessage>> }
 interface AiRepository { fun messages(): Flow<List<ChatMessage>> }
 interface ProfileRepository { fun user(): Flow<AppUser?> }
+
+class EmptyChatRepository : ChatRepository {
+    override fun conversations(): Flow<List<Conversation>> = flowOf(emptyList())
+    override fun messages(conversationId: String): Flow<List<ChatMessage>> = flowOf(emptyList())
+}
+
+class EmptyAiRepository : AiRepository {
+    override fun messages(): Flow<List<ChatMessage>> = flowOf(emptyList())
+}
+
+class EmptyProfileRepository : ProfileRepository {
+    override fun user(): Flow<AppUser?> = flowOf(null)
+}
 
 data class SignedInUser(val id: String, val email: String?)
 sealed interface AuthSession {
