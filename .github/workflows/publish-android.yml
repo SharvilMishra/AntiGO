@@ -37,7 +37,7 @@ jobs:
           gradle-version: '9.3.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android platform and build tools
         run: sdkmanager "platforms;android-36.1" "build-tools;36.0.0"
