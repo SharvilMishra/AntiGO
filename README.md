@@ -1,4 +1,4 @@
-# Android client foundation
+# AntiGO for Android
 
 This repository contains the Android client foundation. The initial app has no seeded conversations, messages, profile, or AI replies. Backend requests are not implemented.
 
@@ -22,6 +22,6 @@ Keep the signing key and passwords private and backed up. Future APK updates mus
 
 ## Firebase Authentication setup
 
-The Android app uses Firebase Authentication with email and password for account creation, sign-in, password reset, and sign-out. In the Firebase console, create/register an Android app with package `com.sharvil.antigo`, enable the Email/Password provider, download its `google-services.json`, and place that file at `app/google-services.json`. The Google services Gradle plugin is applied when this file is present. Without it, the app stays signed out and explains that Firebase is not configured.
+The Android app uses Firebase Authentication for email/password and Google sign-in, account creation, password reset, and sign-out. In Firebase Authentication, enable the Email/Password and Google providers. In Firebase project settings, register the Android app with package `com.sharvil.antigo` and add the SHA-1 signing fingerprints for the debug certificate and the release signing key. Download the refreshed `google-services.json` and put it at `app/google-services.json` for local builds. The Google sign-in button uses the web OAuth client ID generated from that file. For GitHub Actions, store the refreshed file as the `FIREBASE_CONFIG_BASE64` repository secret. The Google services Gradle plugin is applied when the configuration file is present. Without it, the app stays signed out and explains that Firebase is not configured.
 
 The static APK download website does not need Firebase. Firebase is required in the Android app because that is where users sign in. Add Firebase to the website only if the website itself needs user accounts or protected pages.

@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
                     AuthSession.SignedOut, AuthSession.Unavailable -> LoginScreen(
                         state = authState,
                         onSignIn = authViewModel::signIn,
+                        onGoogleToken = authViewModel::signInWithGoogle,
                         onCreateAccount = authViewModel::createAccount,
                         onResetPassword = authViewModel::sendPasswordReset
                     )
@@ -51,8 +52,10 @@ private fun MainNavigation(email: String?, onSignOut: () -> Unit) {
     val aiState by ai.uiState.collectAsState()
     val profile: ProfileViewModel = viewModel()
     val profileState by profile.uiState.collectAsState()
-    Scaffold(bottomBar = { NavigationBar { AppTab.entries.forEach { tab ->
-        NavigationBarItem(selected == tab, onClick = { selected = tab }, icon = { }, label = { Text(tab.label) })
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = { NavigationBar(containerColor = MaterialTheme.colorScheme.surface) { AppTab.entries.forEach { tab ->
+        NavigationBarItem(selected == tab, onClick = { selected = tab }, icon = { Text(tab.mark) }, label = { Text(tab.label) })
     } } }, floatingActionButton = { if (selected == AppTab.CHATS) FloatingActionButton(onClick = { showNewConversation = true }) { Text("+") } }) { padding ->
         when (selected) {
             AppTab.CHATS -> ChatsScreen(chatState, Modifier.padding(padding), onSearch = chats::search, onNewConversation = { showNewConversation = true })
@@ -63,4 +66,4 @@ private fun MainNavigation(email: String?, onSignOut: () -> Unit) {
     if (showNewConversation) AlertDialog(onDismissRequest = { showNewConversation = false }, title = { Text("New conversation") }, text = { Text("No conversations yet") }, confirmButton = { TextButton(onClick = { showNewConversation = false }) { Text("Close") } })
 }
 
-private enum class AppTab(val label: String) { CHATS("Chats"), AI("AI"), PROFILE("Profile") }
+private enum class AppTab(val label: String, val mark: String) { CHATS("Chats", "◉"), AI("AI", "✦"), PROFILE("Profile", "●") }

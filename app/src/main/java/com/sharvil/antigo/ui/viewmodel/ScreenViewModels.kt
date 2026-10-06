@@ -41,6 +41,10 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         repository.signIn(email, password)
     }
 
+    fun signInWithGoogle(idToken: String) = runOperation(null) {
+        repository.signInWithGoogle(idToken)
+    }
+
     fun sendPasswordReset(email: String) = runOperation("If an account exists for this email, a reset link has been sent.") {
         repository.sendPasswordReset(email)
     }

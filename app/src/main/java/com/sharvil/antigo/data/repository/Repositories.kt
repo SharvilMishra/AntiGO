@@ -44,6 +44,7 @@ interface AuthRepository {
     val session: Flow<AuthSession>
     suspend fun createAccount(email: String, password: String): Result<Unit>
     suspend fun signIn(email: String, password: String): Result<Unit>
+    suspend fun signInWithGoogle(idToken: String): Result<Unit>
     suspend fun sendPasswordReset(email: String): Result<Unit>
     suspend fun signOut(): Result<Unit>
 }
@@ -72,6 +73,12 @@ class FirebaseAuthRepository(context: Context) : AuthRepository {
 
     override suspend fun signIn(email: String, password: String): Result<Unit> = authResult {
         requireAuth().signInWithEmailAndPassword(email.trim(), password).awaitResult()
+        Unit
+    }
+
+    override suspend fun signInWithGoogle(idToken: String): Result<Unit> = authResult {
+        val credential = com.google.firebase.auth.GoogleAuthProvider.getCredential(idToken, null)
+        requireAuth().signInWithCredential(credential).awaitResult()
         Unit
     }
 

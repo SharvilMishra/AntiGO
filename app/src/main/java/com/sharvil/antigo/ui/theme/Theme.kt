@@ -1,23 +1,46 @@
 package com.sharvil.antigo.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.sharvil.antigo.domain.model.ThemeChoice
 
 private val Yellow = Color(0xFFFFD60A)
-private val Black = Color(0xFF000000)
-private val Ink = Color(0xFF0D0D0D)
-private val SurfaceDark = Color(0xFF1A1A1A)
-private val White = Color(0xFFFFFFFF)
-private val Paper = Color(0xFFF7F7F5)
-private val Grey = Color(0xFF8A8A8A)
+private val Ink = Color(0xFF1A1B22)
+private val Canvas = Color(0xFFFBF8FF)
+private val InputSurface = Color(0xFFF0EDF8)
+private val MutedInk = Color(0xFF4D4632)
+private val DarkCanvas = Color(0xFF111116)
+private val DarkSurface = Color(0xFF1D1D24)
+private val DarkMuted = Color(0xFFBDB8C8)
 
-private val Light = lightColorScheme(primary = Yellow, onPrimary = Black, background = Paper, onBackground = Black, surface = White, onSurface = Black, surfaceVariant = Paper, onSurfaceVariant = Grey)
-private val Dark = darkColorScheme(primary = Yellow, onPrimary = Black, background = Ink, onBackground = White, surface = SurfaceDark, onSurface = White, surfaceVariant = SurfaceDark, onSurfaceVariant = Grey)
+private val Light = lightColorScheme(
+    primary = Color(0xFF735C00), onPrimary = Color.White,
+    primaryContainer = Yellow, onPrimaryContainer = Color(0xFF3D3100),
+    background = Canvas, onBackground = Ink,
+    surface = Color.White, onSurface = Ink,
+    surfaceVariant = InputSurface, onSurfaceVariant = MutedInk,
+    outline = Color(0xFF7F7660), outlineVariant = Color(0xFFD8D2E1)
+)
 
-@Composable fun AppTheme(theme: ThemeChoice, content: @Composable () -> Unit) {
-    val dark = when (theme) { ThemeChoice.SYSTEM -> isSystemInDarkTheme(); ThemeChoice.LIGHT -> false; ThemeChoice.DARK -> true }
+private val Dark = darkColorScheme(
+    primary = Yellow, onPrimary = Color(0xFF241E00),
+    primaryContainer = Color(0xFF514400), onPrimaryContainer = Color(0xFFFFE277),
+    background = DarkCanvas, onBackground = Color(0xFFF2F0F7),
+    surface = DarkSurface, onSurface = Color(0xFFF2F0F7),
+    surfaceVariant = Color(0xFF292832), onSurfaceVariant = DarkMuted,
+    outline = Color(0xFF8D8996), outlineVariant = Color(0xFF46434D)
+)
+
+@Composable
+fun AppTheme(theme: ThemeChoice, content: @Composable () -> Unit) {
+    val dark = when (theme) {
+        ThemeChoice.SYSTEM -> isSystemInDarkTheme()
+        ThemeChoice.LIGHT -> false
+        ThemeChoice.DARK -> true
+    }
     MaterialTheme(colorScheme = if (dark) Dark else Light, content = content)
 }
