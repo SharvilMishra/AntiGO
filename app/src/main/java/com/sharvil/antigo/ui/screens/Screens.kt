@@ -1,6 +1,5 @@
 package com.sharvil.antigo.ui.screens
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -114,7 +113,8 @@ fun LoginScreen(
                         googleError = null
                         scope.launch {
                             try {
-                                val clientId = context.stringResourceByName("default_web_client_id")
+                                val clientId = runCatching { context.getString(com.sharvil.antigo.R.string.default_web_client_id) }
+                                    .getOrNull()
                                 if (clientId.isNullOrBlank()) error("Google sign-in isn't configured. Add the updated Firebase app configuration.")
                                 val googleOption = GetGoogleIdOption.Builder()
                                     .setFilterByAuthorizedAccounts(false)
@@ -161,10 +161,6 @@ private fun authFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedTextColor = MaterialTheme.colorScheme.onSurface, focusedLabelColor = MaterialTheme.colorScheme.primary,
     unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
 )
-
-private fun Context.stringResourceByName(name: String): String? = runCatching {
-    getString(resources.getIdentifier(name, "string", packageName))
-}.getOrNull()?.takeIf { it.isNotBlank() }
 
 @Composable
 fun ChatsScreen(state: ChatsUiState, modifier: Modifier = Modifier, onSearch: (String) -> Unit, onNewConversation: () -> Unit = {}) {

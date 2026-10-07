@@ -75,9 +75,9 @@ jobs:
 
       - name: Confirm Google sign-in client ID is packaged
         run: |
-          generated="app/build/generated/res/google-services/release/values/values.xml"
-          test -f "$generated"
-          grep -q 'name="default_web_client_id"' "$generated"
+          aapt="${ANDROID_HOME}/build-tools/36.0.0/aapt"
+          test -x "$aapt"
+          "$aapt" dump resources downloads/antigo.apk | grep -q 'default_web_client_id'
 
       - name: Publish APK as a GitHub release asset
         env:
