@@ -4,15 +4,40 @@ import androidx.lifecycle.ViewModel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.sharvil.antigo.data.repository.FirebaseDirectoryRepository
+import com.sharvil.antigo.domain.model.ChatMessage
+import com.sharvil.antigo.domain.model.Conversation
+import com.sharvil.antigo.domain.model.UserProfile
 import com.sharvil.antigo.data.repository.*
 import com.sharvil.antigo.domain.model.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-data class ChatsUiState(val conversations: List<Conversation> = emptyList(), val query: String = "")
-data class ChatDetailUiState(val conversationId: String = "", val messages: List<ChatMessage> = emptyList())
+data class ChatsUiState(
+    val conversations: List<Conversation> = emptyList(),
+    val query: String = "",
+    val personQuery: String = "",
+    val matchedPerson: UserProfile? = null,
+    val isSearchingPerson: Boolean = false,
+    val isStartingConversation: Boolean = false,
+    val dialogMessage: String? = null,
+    val dialogError: Boolean = false,
+    val openedConversationId: String? = null
+)
+data class ChatDetailUiState(
+    val conversationId: String = "",
+    val messages: List<ChatMessage> = emptyList(),
+    val isSending: Boolean = false,
+    val error: String? = null
+)
 data class AiUiState(val messages: List<ChatMessage> = emptyList())
-data class ProfileUiState(val user: AppUser? = null)
+data class ProfileUiState(
+    val profile: UserProfile? = null,
+    val isLoading: Boolean = true,
+    val isSavingUsername: Boolean = false,
+    val message: String? = null,
+    val isError: Boolean = false
+)
 data class AuthUiState(
     val session: AuthSession = AuthSession.SignedOut,
     val isBusy: Boolean = false,
@@ -83,21 +108,156 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 fun filterConversations(conversations: List<Conversation>, query: String): List<Conversation> =
     conversations.filter { it.title.contains(query, ignoreCase = true) }
 
-class ChatsViewModel : ViewModel() {
+class ChatsViewModel(application: Application) : AndroidViewModel(application) {
+    private val repository = FirebaseDirectoryRepository()
     private val query = MutableStateFlow("")
-    val uiState = combine(EmptyChatRepository().conversations(), query) { rows, term -> ChatsUiState(filterConversations(rows, term), term) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatsUiState())
+    private val mutableUiState = MutableStateFlow(ChatsUiState())
+    val uiState = combine(mutableUiState, query) { state, term ->
+        state.copy(conversations = filterConversations(state.conversations, term), query = term)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatsUiState())
+    private var accountId: String? = null
+    private var conversationsJob: kotlinx.coroutines.Job? = null
+
+    fun setAccount(uid: String) {
+        if (accountId == uid) return
+        accountId = uid
+        conversationsJob?.cancel()
+        mutableUiState.value = ChatsUiState()
+        conversationsJob = viewModelScope.launch {
+            repository.observeConversations(uid).catch { error ->
+                mutableUiState.update { it.copy(dialogMessage = error.toFriendlyDirectoryMessage(), dialogError = true) }
+            }.collect { rows ->
+                mutableUiState.update { it.copy(conversations = rows) }
+            }
+        }
+    }
+
     fun search(value: String) { query.value = value }
+
+    fun updatePersonQuery(value: String) {
+        mutableUiState.update { it.copy(personQuery = value, matchedPerson = null, dialogMessage = null, dialogError = false) }
+    }
+
+    fun findPerson() {
+        val identifier = mutableUiState.value.personQuery
+        if (identifier.isBlank() || mutableUiState.value.isSearchingPerson) return
+        viewModelScope.launch {
+            mutableUiState.update { it.copy(isSearchingPerson = true, matchedPerson = null, dialogMessage = null) }
+            val result = runCatching { repository.findUser(identifier) }
+            mutableUiState.update { state ->
+                when {
+                    result.isFailure -> state.copy(isSearchingPerson = false, dialogMessage = result.exceptionOrNull()?.toFriendlyDirectoryMessage(), dialogError = true)
+                    result.getOrNull() == null -> state.copy(isSearchingPerson = false, dialogMessage = "No AntiGO user matched that username or ID.", dialogError = true)
+                    result.getOrNull()?.id == accountId -> state.copy(isSearchingPerson = false, dialogMessage = "That's your own account. Search for another user.", dialogError = true)
+                    else -> state.copy(isSearchingPerson = false, matchedPerson = result.getOrNull(), dialogMessage = null, dialogError = false)
+                }
+            }
+        }
+    }
+
+    fun startConversation() {
+        val person = mutableUiState.value.matchedPerson ?: return
+        val uid = accountId ?: return
+        if (mutableUiState.value.isStartingConversation) return
+        viewModelScope.launch {
+            mutableUiState.update { it.copy(isStartingConversation = true, dialogMessage = null) }
+            val result = runCatching { repository.startConversation(uid, person) }
+            mutableUiState.update { state ->
+                result.fold(
+                    onSuccess = { state.copy(isStartingConversation = false, openedConversationId = it, dialogError = false) },
+                    onFailure = { state.copy(isStartingConversation = false, dialogMessage = it.toFriendlyDirectoryMessage(), dialogError = true) }
+                )
+            }
+        }
+    }
+
+    fun clearOpenedConversation() { mutableUiState.update { it.copy(openedConversationId = null) } }
+    fun dismissPersonSearch() { mutableUiState.update { it.copy(personQuery = "", matchedPerson = null, dialogMessage = null, dialogError = false) } }
 }
-class ChatDetailViewModel(conversationId: String = "") : ViewModel() {
-    val uiState = EmptyChatRepository().messages(conversationId).map { ChatDetailUiState(conversationId, it) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatDetailUiState(conversationId))
+
+class ChatDetailViewModel(application: Application) : AndroidViewModel(application) {
+    private val repository = FirebaseDirectoryRepository()
+    private val mutableUiState = MutableStateFlow(ChatDetailUiState())
+    val uiState = mutableUiState.asStateFlow()
+    private var messagesJob: kotlinx.coroutines.Job? = null
+
+    fun open(conversationId: String) {
+        if (mutableUiState.value.conversationId == conversationId) return
+        messagesJob?.cancel()
+        messagesJob = viewModelScope.launch {
+            mutableUiState.value = ChatDetailUiState(conversationId)
+            repository.observeMessages(conversationId).catch { error ->
+                mutableUiState.update { it.copy(error = error.toFriendlyDirectoryMessage()) }
+            }.collect { messages ->
+                mutableUiState.update { it.copy(messages = messages) }
+            }
+        }
+    }
+
+    fun send(senderId: String, text: String) {
+        val conversationId = mutableUiState.value.conversationId
+        if (text.isBlank() || mutableUiState.value.isSending) return
+        viewModelScope.launch {
+            mutableUiState.update { it.copy(isSending = true, error = null) }
+            val result = runCatching { repository.sendMessage(conversationId, senderId, text) }
+            mutableUiState.update {
+                it.copy(isSending = false, error = result.exceptionOrNull()?.toFriendlyDirectoryMessage())
+            }
+        }
+    }
+
+    fun decideMessageRequest(accept: Boolean) {
+        val conversationId = mutableUiState.value.conversationId
+        viewModelScope.launch {
+            val result = runCatching { repository.decideMessageRequest(conversationId, accept) }
+            mutableUiState.update { it.copy(error = result.exceptionOrNull()?.toFriendlyDirectoryMessage()) }
+        }
+    }
 }
 class AiViewModel : ViewModel() { val uiState = EmptyAiRepository().messages().map(::AiUiState).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiUiState()) }
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
-    val uiState = EmptyProfileRepository().user().map(::ProfileUiState).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ProfileUiState())
+    private val directory = FirebaseDirectoryRepository()
+    private val mutableUiState = MutableStateFlow(ProfileUiState())
+    val uiState = mutableUiState.asStateFlow()
+    private var accountId: String? = null
+    private var profileJob: kotlinx.coroutines.Job? = null
     val theme = MutableStateFlow(runCatching { ThemeChoice.valueOf(application.getSharedPreferences("preferences", 0).getString("theme", null) ?: "SYSTEM") }.getOrDefault(ThemeChoice.SYSTEM))
     fun setTheme(value: ThemeChoice) {
         getApplication<Application>().getSharedPreferences("preferences", 0).edit().putString("theme", value.name).apply()
         theme.value = value
     }
+
+    fun setAccount(uid: String) {
+        if (accountId == uid) return
+        accountId = uid
+        profileJob?.cancel()
+        mutableUiState.value = ProfileUiState(isLoading = true)
+        profileJob = viewModelScope.launch {
+            directory.observeProfile(uid).catch { error ->
+                mutableUiState.update { it.copy(isLoading = false, message = error.toFriendlyDirectoryMessage(), isError = true) }
+            }.collect { profile ->
+                mutableUiState.update { it.copy(profile = profile, isLoading = false) }
+            }
+        }
+    }
+
+    fun saveUsername(uid: String, requested: String, authDisplayName: String?) {
+        if (mutableUiState.value.isSavingUsername) return
+        viewModelScope.launch {
+            mutableUiState.update { it.copy(isSavingUsername = true, message = null, isError = false) }
+            val result = runCatching { directory.saveUsername(uid, requested, authDisplayName) }
+            mutableUiState.update { state ->
+                result.fold(
+                    onSuccess = { state.copy(profile = it, isSavingUsername = false, message = "Username saved.", isError = false) },
+                    onFailure = { state.copy(isSavingUsername = false, message = it.toFriendlyDirectoryMessage(), isError = true) }
+                )
+            }
+        }
+    }
+}
+
+private fun Throwable?.toFriendlyDirectoryMessage(): String = when (this) {
+    is com.sharvil.antigo.data.repository.UsernameAlreadyTakenException -> message ?: "That username is already taken."
+    is IllegalArgumentException -> message ?: "Check the value and try again."
+    else -> "Couldn't reach AntiGO right now. Check your connection and try again."
 }

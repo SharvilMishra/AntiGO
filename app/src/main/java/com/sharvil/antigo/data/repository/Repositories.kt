@@ -33,7 +33,7 @@ class EmptyProfileRepository : ProfileRepository {
     override fun user(): Flow<AppUser?> = flowOf(null)
 }
 
-data class SignedInUser(val id: String, val email: String?)
+data class SignedInUser(val id: String, val email: String?, val displayName: String? = null)
 sealed interface AuthSession {
     data object SignedOut : AuthSession
     data class SignedIn(val user: SignedInUser) : AuthSession
@@ -93,7 +93,7 @@ class FirebaseAuthRepository(context: Context) : AuthRepository {
 
     private fun requireAuth(): FirebaseAuth = auth ?: error("Firebase is not configured for this Android app.")
 
-    private fun FirebaseUser.toSession() = AuthSession.SignedIn(SignedInUser(uid, email))
+    private fun FirebaseUser.toSession() = AuthSession.SignedIn(SignedInUser(uid, email, displayName))
 }
 
 private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { continuation ->

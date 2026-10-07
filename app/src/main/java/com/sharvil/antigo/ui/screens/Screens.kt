@@ -1,8 +1,11 @@
 package com.sharvil.antigo.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -15,10 +18,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -26,8 +32,11 @@ import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.sharvil.antigo.data.repository.AuthSession
+import com.sharvil.antigo.domain.model.ChatMessage
 import com.sharvil.antigo.domain.model.ThemeChoice
 import com.sharvil.antigo.ui.viewmodel.*
+import com.sharvil.antigo.domain.model.Conversation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.launch
 
 private enum class AuthFormMode { SIGN_IN, CREATE_ACCOUNT, RESET_PASSWORD }
@@ -163,7 +172,13 @@ private fun authFieldColors() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
-fun ChatsScreen(state: ChatsUiState, modifier: Modifier = Modifier, onSearch: (String) -> Unit, onNewConversation: () -> Unit = {}) {
+fun ChatsScreen(
+    state: ChatsUiState,
+    modifier: Modifier = Modifier,
+    onSearch: (String) -> Unit,
+    onNewConversation: () -> Unit = {},
+    onConversationClick: (String) -> Unit = {}
+) {
     Column(modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp)) {
         AntiGoBrand()
         Spacer(Modifier.height(26.dp))
@@ -178,12 +193,93 @@ fun ChatsScreen(state: ChatsUiState, modifier: Modifier = Modifier, onSearch: (S
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("No conversations yet", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
-                Text("Your chats will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Find someone by username or AntiGO ID to start chatting.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(14.dp))
                 TextButton(onClick = onNewConversation) { Text("Start a conversation") }
             }
-        } else LazyColumn(Modifier.weight(1f).fillMaxWidth()) { items(state.conversations.size) { index -> Text(state.conversations[index].title, Modifier.padding(12.dp)) } }
+        } else LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+            items(state.conversations, key = Conversation::id) { conversation ->
+                ListItem(
+                    headlineContent = { Text(conversation.title, fontWeight = FontWeight.SemiBold) },
+                    supportingContent = {
+                        Text(when {
+                            conversation.status == "pending" && conversation.requestedBy != null -> "Message request"
+                            conversation.status == "declined" -> "Request declined"
+                            conversation.preview.isNotBlank() -> conversation.preview
+                            else -> "Open conversation"
+                        })
+                    },
+                    leadingContent = {
+                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+                            Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
+                                Text(conversation.title.removePrefix("@").take(1).uppercase(), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    },
+                    modifier = Modifier.clickable { onConversationClick(conversation.id) }
+                )
+                HorizontalDivider()
+            }
+        }
     }
+}
+
+@Composable
+fun NewConversationDialog(
+    state: ChatsUiState,
+    onQueryChange: (String) -> Unit,
+    onFindPerson: () -> Unit,
+    onStartConversation: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Start a chat") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Search by username or full AntiGO ID.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = state.personQuery,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("@username or AntiGO ID") },
+                    singleLine = true,
+                    enabled = !state.isSearchingPerson && !state.isStartingConversation,
+                    colors = authFieldColors()
+                )
+                OutlinedButton(
+                    onClick = onFindPerson,
+                    enabled = state.personQuery.isNotBlank() && !state.isSearchingPerson && !state.isStartingConversation,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (state.isSearchingPerson) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else Text("Find user")
+                }
+                state.matchedPerson?.let { person ->
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                            Text(person.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("@${person.username}", color = MaterialTheme.colorScheme.primary)
+                            Text("AntiGO ID · ${person.id}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                state.dialogMessage?.let {
+                    Text(it, color = if (state.dialogError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                }
+            }
+        },
+        confirmButton = {
+            if (state.matchedPerson != null) TextButton(
+                enabled = !state.isStartingConversation,
+                onClick = onStartConversation
+            ) {
+                if (state.isStartingConversation) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text("Start chat")
+            }
+        },
+        dismissButton = { TextButton(enabled = !state.isStartingConversation, onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
@@ -199,23 +295,146 @@ fun AiScreen(state: AiUiState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ChatDetailScreen(state: ChatDetailUiState, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxSize().padding(20.dp)) {
-        Text("Conversation", style = MaterialTheme.typography.headlineMedium)
-        if (state.messages.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No messages yet") }
+fun ChatDetailScreen(
+    state: ChatDetailUiState,
+    title: String,
+    currentUserId: String,
+    status: String = "active",
+    requestedBy: String? = null,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit,
+    onSend: (String, String) -> Unit,
+    onMessageRequestDecision: (Boolean) -> Unit = {}
+) {
+    var draft by rememberSaveable(state.conversationId) { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    LaunchedEffect(state.messages.size) {
+        if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.lastIndex)
+    }
+    Column(modifier.fillMaxSize().imePadding()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack) { Text("‹  Chats") }
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+        if (status == "pending") {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        if (requestedBy == currentUserId) "Message request sent. Waiting for a response."
+                        else "This user wants to start a conversation."
+                    )
+                    if (requestedBy != currentUserId) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { onMessageRequestDecision(false) }) { Text("Decline") }
+                            Button(onClick = { onMessageRequestDecision(true) }) { Text("Accept") }
+                        }
+                    }
+                }
+            }
+        } else if (status == "declined") {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("This message request was declined.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else if (state.messages.isEmpty()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("Say hello to start the conversation.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(state.messages, key = ChatMessage::id) { message ->
+                val mine = message.senderId == currentUserId
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                    ) { Text(message.text, Modifier.widthIn(max = 280.dp).padding(horizontal = 14.dp, vertical = 10.dp)) }
+                }
+            }
+        }
+        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
+        if (status == "active") Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Message") },
+                shape = RoundedCornerShape(22.dp),
+                enabled = !state.isSending,
+                maxLines = 4
+            )
+            TextButton(
+                enabled = draft.isNotBlank() && !state.isSending,
+                onClick = { onSend(currentUserId, draft); draft = "" }
+            ) { Text(if (state.isSending) "…" else "Send") }
+        }
     }
 }
 
 @Composable
-fun ProfileScreen(state: ProfileUiState, vm: ProfileViewModel, modifier: Modifier = Modifier, email: String? = null, onSignOut: () -> Unit = {}) {
+fun ProfileScreen(
+    state: ProfileUiState,
+    vm: ProfileViewModel,
+    modifier: Modifier = Modifier,
+    userId: String,
+    email: String?,
+    authDisplayName: String?,
+    onSignOut: () -> Unit = {}
+) {
+    var username by rememberSaveable { mutableStateOf("") }
+    var copied by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    LaunchedEffect(state.profile?.username) { username = state.profile?.username.orEmpty() }
     Column(modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp)) {
         AntiGoBrand()
         Spacer(Modifier.height(26.dp))
         Text("Profile", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(22.dp))
-        state.user?.name?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-        email?.takeIf(String::isNotBlank)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        Spacer(Modifier.height(30.dp))
+        Spacer(Modifier.height(18.dp))
+        Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(state.profile?.displayName ?: authDisplayName ?: "Your AntiGO account", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                email?.takeIf(String::isNotBlank)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                Text("Your unique AntiGO ID", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(userId, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = {
+                        val clipboard = context.getSystemService(ClipboardManager::class.java)
+                        clipboard?.setPrimaryClip(ClipData.newPlainText("AntiGO ID", userId))
+                        copied = true
+                    }) { Text(if (copied) "Copied" else "Copy ID") }
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+        Text("Username", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it.removePrefix("@") },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Choose a unique username") },
+            prefix = { Text("@") },
+            singleLine = true,
+            enabled = !state.isLoading && !state.isSavingUsername && state.profile?.username.isNullOrBlank(),
+            supportingText = {
+                Text(if (state.profile?.username.isNullOrBlank()) "3–20 characters · letters, numbers, and underscore" else "Your e-CON username is permanent.")
+            },
+            colors = authFieldColors()
+        )
+        Button(
+            onClick = { vm.saveUsername(userId, username, authDisplayName) },
+            enabled = username.isNotBlank() && !state.isLoading && !state.isSavingUsername && state.profile?.username.isNullOrBlank(),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            if (state.isSavingUsername) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            else Text("Claim username")
+        }
+        state.message?.let { Text(it, color = if (state.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp)) }
+        Spacer(Modifier.height(24.dp))
         Text("Appearance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         ThemeChoice.entries.forEach { choice ->
             Row(verticalAlignment = Alignment.CenterVertically) {
