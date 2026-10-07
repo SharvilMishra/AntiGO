@@ -54,6 +54,12 @@ jobs:
           printf '%s' "$FIREBASE_CONFIG_BASE64" | base64 --decode > app/google-services.json
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > release-signing/antigo-release.p12
 
+      - name: Verify Firebase config matches the release APK
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: python3 scripts/validate_firebase_config.py
+
       - name: Build and copy signed release APK
         env:
           KEYSTORE_PATH: release-signing/antigo-release.p12
@@ -66,6 +72,12 @@ jobs:
           test -n "$KEY_ALIAS" || { echo "KEY_ALIAS secret is required"; exit 1; }
           test -n "$KEY_PASSWORD" || { echo "KEY_PASSWORD secret is required"; exit 1; }
           gradle --no-daemon publishReleaseApkToWebsite
+
+      - name: Confirm Google sign-in client ID is packaged
+        run: |
+          generated="app/build/generated/res/google-services/release/values/values.xml"
+          test -f "$generated"
+          grep -q 'name="default_web_client_id"' "$generated"
 
       - name: Publish APK as a GitHub release asset
         env:

@@ -1,6 +1,8 @@
 package com.sharvil.antigo
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -11,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sharvil.antigo.data.repository.AuthSession
+import com.sharvil.antigo.data.remote.AppUpdateChecker
+import com.sharvil.antigo.data.remote.AvailableAppUpdate
 import com.sharvil.antigo.ui.screens.*
 import com.sharvil.antigo.ui.theme.AppTheme
 import com.sharvil.antigo.ui.viewmodel.*
@@ -19,6 +23,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            var availableUpdate by remember { mutableStateOf<AvailableAppUpdate?>(null) }
+            LaunchedEffect(Unit) {
+                availableUpdate = AppUpdateChecker.check(this@MainActivity)
+            }
             val themeViewModel: ProfileViewModel = viewModel()
             val theme by themeViewModel.theme.collectAsState()
             AppTheme(theme = theme) {
@@ -35,6 +43,29 @@ class MainActivity : ComponentActivity() {
                         onGoogleToken = authViewModel::signInWithGoogle,
                         onCreateAccount = authViewModel::createAccount,
                         onResetPassword = authViewModel::sendPasswordReset
+                    )
+                }
+                availableUpdate?.let { update ->
+                    AlertDialog(
+                        onDismissRequest = { availableUpdate = null },
+                        title = { Text("Update available") },
+                        text = {
+                            Text("AntiGO ${update.version} is ready. Open the download page to install the latest version.")
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                availableUpdate = null
+                                startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://sharvilmishra.github.io/AntiGO/")
+                                    )
+                                )
+                            }) { Text("Open download page") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { availableUpdate = null }) { Text("Later") }
+                        }
                     )
                 }
             }
