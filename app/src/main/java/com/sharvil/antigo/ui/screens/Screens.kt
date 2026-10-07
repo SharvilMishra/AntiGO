@@ -311,6 +311,9 @@ fun ChatDetailScreen(
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.lastIndex)
     }
+    LaunchedEffect(state.sendSuccessCount) {
+        if (state.sendSuccessCount > 0) draft = ""
+    }
     Column(modifier.fillMaxSize().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("‹  Chats") }
@@ -367,7 +370,7 @@ fun ChatDetailScreen(
             )
             TextButton(
                 enabled = draft.isNotBlank() && !state.isSending,
-                onClick = { onSend(currentUserId, draft); draft = "" }
+                onClick = { onSend(currentUserId, draft) }
             ) { Text(if (state.isSending) "…" else "Send") }
         }
     }
@@ -386,11 +389,19 @@ fun ProfileScreen(
     var username by rememberSaveable { mutableStateOf("") }
     var copied by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val currentTheme by vm.theme.collectAsState()
     LaunchedEffect(state.profile?.username) { username = state.profile?.username.orEmpty() }
-    Column(modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp)) {
+    Column(
+        modifier.fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 22.dp, vertical = 18.dp)
+    ) {
         AntiGoBrand()
         Spacer(Modifier.height(26.dp))
-        Text("Profile", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Profile", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            OutlinedButton(onClick = onSignOut, shape = RoundedCornerShape(16.dp)) { Text("Sign out") }
+        }
         Spacer(Modifier.height(18.dp))
         Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
             Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -411,38 +422,44 @@ fun ProfileScreen(
         Spacer(Modifier.height(24.dp))
         Text("Username", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = username,
-            onValueChange = { username = it.removePrefix("@") },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Choose a unique username") },
-            prefix = { Text("@") },
-            singleLine = true,
-            enabled = !state.isLoading && !state.isSavingUsername && state.profile?.username.isNullOrBlank(),
-            supportingText = {
-                Text(if (state.profile?.username.isNullOrBlank()) "3–20 characters · letters, numbers, and underscore" else "Your e-CON username is permanent.")
-            },
-            colors = authFieldColors()
-        )
-        Button(
-            onClick = { vm.saveUsername(userId, username, authDisplayName) },
-            enabled = username.isNotBlank() && !state.isLoading && !state.isSavingUsername && state.profile?.username.isNullOrBlank(),
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            if (state.isSavingUsername) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            else Text("Claim username")
+        if (state.profile?.username.isNullOrBlank()) {
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it.removePrefix("@") },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Choose a unique username") },
+                prefix = { Text("@") },
+                singleLine = true,
+                enabled = !state.isLoading && !state.isSavingUsername,
+                supportingText = { Text("3–20 characters · letters, numbers, and underscore") },
+                colors = authFieldColors()
+            )
+            Button(
+                onClick = { vm.saveUsername(userId, username, authDisplayName) },
+                enabled = username.isNotBlank() && !state.isLoading && !state.isSavingUsername,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                if (state.isSavingUsername) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text("Claim username")
+            }
+        } else {
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text("@${state.profile.username}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Usernames are permanent, as in e-CON.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         state.message?.let { Text(it, color = if (state.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp)) }
         Spacer(Modifier.height(24.dp))
         Text("Appearance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         ThemeChoice.entries.forEach { choice ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = vm.theme.value == choice, onClick = { vm.setTheme(choice) })
+                RadioButton(selected = currentTheme == choice, onClick = { vm.setTheme(choice) })
                 Text(choice.name.lowercase().replaceFirstChar(Char::uppercase))
             }
         }
-        Spacer(Modifier.height(16.dp))
-        OutlinedButton(onClick = onSignOut, shape = RoundedCornerShape(16.dp)) { Text("Sign out") }
+        Spacer(Modifier.height(20.dp))
     }
 }

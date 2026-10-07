@@ -28,6 +28,7 @@ data class ChatDetailUiState(
     val conversationId: String = "",
     val messages: List<ChatMessage> = emptyList(),
     val isSending: Boolean = false,
+    val sendSuccessCount: Int = 0,
     val error: String? = null
 )
 data class AiUiState(val messages: List<ChatMessage> = emptyList())
@@ -201,7 +202,11 @@ class ChatDetailViewModel(application: Application) : AndroidViewModel(applicati
             mutableUiState.update { it.copy(isSending = true, error = null) }
             val result = runCatching { repository.sendMessage(conversationId, senderId, text) }
             mutableUiState.update {
-                it.copy(isSending = false, error = result.exceptionOrNull()?.toFriendlyDirectoryMessage())
+                it.copy(
+                    isSending = false,
+                    sendSuccessCount = if (result.isSuccess) it.sendSuccessCount + 1 else it.sendSuccessCount,
+                    error = result.exceptionOrNull()?.toFriendlyDirectoryMessage()
+                )
             }
         }
     }
@@ -258,6 +263,19 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
 private fun Throwable?.toFriendlyDirectoryMessage(): String = when (this) {
     is com.sharvil.antigo.data.repository.UsernameAlreadyTakenException -> message ?: "That username is already taken."
+    is com.sharvil.antigo.data.repository.UsernameAlreadySetException -> message ?: "Your username is already set."
     is IllegalArgumentException -> message ?: "Check the value and try again."
+    is com.google.firebase.firestore.FirebaseFirestoreException -> when (code) {
+        com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED ->
+            "Firebase denied this action. The IUDEX Firestore rules may need an update."
+        com.google.firebase.firestore.FirebaseFirestoreException.Code.FAILED_PRECONDITION ->
+            "Firestore is missing a required index. Deploy the IUDEX Firestore indexes."
+        com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAVAILABLE,
+        com.google.firebase.firestore.FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ->
+            "Firebase is temporarily unavailable. Check your connection and retry."
+        com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAUTHENTICATED ->
+            "Your sign-in expired. Sign out and sign in again."
+        else -> "Firebase couldn't complete this request (${code.name.lowercase().replace('_', ' ')}). Please retry."
+    }
     else -> "Couldn't reach AntiGO right now. Check your connection and try again."
 }
